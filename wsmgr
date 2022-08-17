@@ -1,0 +1,137 @@
+#!/bin/bash
+
+# Script to get switch workspace for Xfce4 with option to
+# create a new workspace and/or rename current workspace.
+#
+# Requirements:
+#
+# 1) wmctrl
+# 2) zenity
+
+clear
+# Raise error on read if variable is not previously written 
+set -u
+
+# # Debug trace
+# set -x
+
+# Populate array for workspace names
+COUNTER=0
+WS_COUNT=$(xfconf-query -c xfwm4 -p /general/workspace_count)
+# echo There are $WS_COUNT workspaces
+WS_NAMES=()
+while read line; do
+    if [ $COUNTER -lt $WS_COUNT ]
+    then
+        WS_NAMES+=("$line")
+        ((COUNTER+=1))
+    else
+        DUMMYVAR=0
+    fi
+#   echo "$line"
+done < <(xfconf-query -c xfwm4 -p /general/workspace_names | tail -n +3)
+# echo "${WS_NAMES[2]}"
+
+choice=`zenity --list --title="Workspace Manager" --width=200 --height=550 --hide-header --column="0" "${WS_NAMES[@]}" "New Workspace" "Rename Workspace" "Delete Workspace"`
+
+for i in ${!WS_NAMES[@]}; do
+    ws_name="${WS_NAMES[i]}"
+    current_ws=$(wmctrl -d | grep "$ws_name" | cut -d " " -f1) # current workspace id
+    # echo "$ws_name = workspace ID $current_ws"
+    if [ "$choice" == "$ws_name" ]; then
+        wmctrl -s "$current_ws"
+        exit
+    fi
+done
+
+if [ "$choice" == "New Workspace" ]; then
+    # Get new workspace name via zenity
+    new_name=$(zenity --entry --title="New Workspace" --text="Name for new workspace?")
+    add_ws=$((current_ws+2))
+    new_ws=$((current_ws+1))
+    wmctrl -n "$add_ws"
+    wmctrl -s "$new_ws"
+    # Rename
+    # Current workspace output by wmctrl
+    curnt_ws_idx=$(wmctrl -d | grep '*' | cut -d " " -f1) # current workspace id
+
+    # Get the names of all the workspaces
+    WS_NAMES=()
+    while read name; do
+        WS_NAMES+=("$name")
+    done < <(xfconf-query -c xfwm4 -p /general/workspace_names | tail -n +3)
+
+
+    # Overwrite current workspace name
+    xfconf_cmd="xfconf-query -c xfwm4 -p /general/workspace_names"
+    for i in ${!WS_NAMES[@]}; do
+        if [[ $i == $curnt_ws_idx && $new_name ]]; then
+            xfconf_cmd+=" -s \"$new_name\""
+        else
+            xfconf_cmd+=" -s \"${WS_NAMES[$i]}\""
+        fi
+    done
+    eval $xfconf_cmd
+    exit
+fi 
+
+if [ "$choice" == "Rename Workspace" ]; then
+    # Rename
+    # Current workspace output by wmctrl
+    curnt_ws_idx=$(wmctrl -d | grep '*' | cut -d " " -f1) # current workspace id
+
+    # Get the names of all the workspaces
+    WS_NAMES=()
+    while read name; do
+        WS_NAMES+=("$name")
+    done < <(xfconf-query -c xfwm4 -p /general/workspace_names | tail -n +3)
+
+    # Get new workspace name via zenity
+    new_name=$(zenity --entry --title="Rename workspace" \
+        --text="Rename workspace $((curnt_ws_idx + 1))" --entry-text="${WS_NAMES[$curnt_ws_idx]}")
+
+    # Overwrite current workspace name
+    xfconf_cmd="xfconf-query -c xfwm4 -p /general/workspace_names"
+    for i in ${!WS_NAMES[@]}; do
+        if [[ $i == $curnt_ws_idx && $new_name ]]; then
+            xfconf_cmd+=" -s \"$new_name\""
+        else
+            xfconf_cmd+=" -s \"${WS_NAMES[$i]}\""
+        fi
+    done
+    eval $xfconf_cmd
+    exit
+fi 
+
+if [ "$choice" == "Delete Workspace" ]; then
+    # Delete
+    # Current workspace output by wmctrl
+    curnt_ws_idx=$(wmctrl -d | grep '*' | cut -d " " -f1) # current workspace id
+
+    # Get the names of all the workspaces
+    WS_NAMES=()
+    while read name; do
+        WS_NAMES+=("$name")
+    done < <(xfconf-query -c xfwm4 -p /general/workspace_names | tail -n +3)
+
+    # Get new workspace name via zenity
+    new_name=$(zenity --entry --title="Rename workspace" --width=600 \
+        --text="Due to a bug in Xfce, it's not possible to delete the active workspace.
+You can press Alt + Del to delete the last workspace but if you want to 
+delete any other workspace, your only alternative is to switch to it 
+and rename it to something like 'Blank' or 'Empty' or 'Unused' then 
+rename it later when you want to use it again. Click cancel if you do 
+not want to rename workspace $((curnt_ws_idx + 1))" --entry-text="${WS_NAMES[$curnt_ws_idx]}")
+
+    # Overwrite current workspace name
+    xfconf_cmd="xfconf-query -c xfwm4 -p /general/workspace_names"
+    for i in ${!WS_NAMES[@]}; do
+        if [[ $i == $curnt_ws_idx && $new_name ]]; then
+            xfconf_cmd+=" -s \"$new_name\""
+        else
+            xfconf_cmd+=" -s \"${WS_NAMES[$i]}\""
+        fi
+    done
+    eval $xfconf_cmd
+    exit
+fi 
